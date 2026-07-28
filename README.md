@@ -68,9 +68,9 @@ Copy-Item .env.example .env.local
 Variables públicas:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
-NEXT_PUBLIC_WS_URL=http://localhost:3001/live
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=https://api-paste.bsdev.me/api/v1
+NEXT_PUBLIC_WS_URL=https://api-paste.bsdev.me/live
+NEXT_PUBLIC_APP_URL=https://paste.bsdev.me
 ```
 
 Estas variables son públicas por diseño. No coloques claves de Cloudflare R2, secretos JWT, contraseñas ni tokens privados en el frontend.
@@ -84,7 +84,7 @@ npm run dev
 
 La aplicación estará disponible en `http://localhost:3000`.
 
-Para que la sesión y CORS funcionen, el backend debe permitir este origen:
+Para desarrollo local, reemplaza temporalmente esas variables en `.env.local` por `http://localhost`. Para que la sesión y CORS funcionen localmente, el backend debe permitir:
 
 ```env
 FRONTEND_ORIGIN=http://localhost:3000
@@ -134,7 +134,7 @@ Para desarrollo local, configura en el bucket:
 ]
 ```
 
-En producción usa el dominio HTTPS exacto del frontend. No uses `*` ni hagas público el bucket.
+En producción usa `https://paste.bsdev.me`. No uses `*` ni hagas público el bucket.
 
 ## Live Share
 
