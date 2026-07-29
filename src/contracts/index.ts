@@ -13,9 +13,10 @@ export interface PasteAsset {
 
 export interface PasteDescriptor {
   publicId: string;
+  customSlug: string | null;
   protection: PasteProtection;
   burnAfterRead: boolean;
-  expiresAt: string;
+  expiresAt: string | null;
   contentType: string;
   encryptionVersion: number;
   requiresUnlock: boolean;
@@ -27,11 +28,19 @@ export interface CreatePasteRequest {
   nonce: string;
   salt: string;
   wrappedKey?: string;
+  vaultWrappedKey?: string;
   protection: PasteProtection;
   accessProof?: string;
   contentType?: string;
-  expiresInSeconds?: number;
+  expiresInSeconds?: number | null;
   burnAfterRead?: boolean;
+  customSlug?: string;
+}
+
+export interface SlugAvailabilityResponse {
+  slug: string;
+  available: boolean;
+  reason?: 'reserved' | 'taken';
 }
 
 export interface CreatePasteResponse extends PasteDescriptor {
@@ -52,6 +61,7 @@ export interface GetPasteResponse extends PasteDescriptor {
   ciphertext?: string;
   nonce?: string;
   wrappedKey?: string;
+  vaultWrappedKey?: string;
   readToken?: string;
   assets?: PasteAsset[];
 }
@@ -147,6 +157,13 @@ export interface AccountUser {
   username: string;
   email: string | null;
   displayName: string | null;
+  vault: AccountVaultDescriptor | null;
+}
+
+export interface AccountVaultDescriptor {
+  salt: string;
+  wrappedKey: string;
+  version: number;
 }
 
 export interface AuthResponse {
@@ -160,7 +177,7 @@ export interface PasteSummary {
   customSlug: string | null;
   protection: PasteProtection;
   burnAfterRead: boolean;
-  expiresAt: string;
+  expiresAt: string | null;
   status: 'ACTIVE' | 'CONSUMED' | 'DELETED';
   contentType: string;
   createdAt: string;
@@ -168,18 +185,20 @@ export interface PasteSummary {
   accessCount: number;
   favorite: boolean;
   owned: boolean;
+  vaultWrappedKey: string | null;
 }
 
 export interface LibraryAsset {
   id: string;
   mimeType: string;
   size: number;
-  nonce?: string;
+  nonce?: string | null;
   createdAt: string;
   paste: {
     publicId: string;
     customSlug: string | null;
-    expiresAt: string;
+    expiresAt: string | null;
     status: string;
+    vaultWrappedKey: string | null;
   };
 }

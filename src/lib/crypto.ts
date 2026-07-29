@@ -135,7 +135,7 @@ export async function decryptBinary(
 }
 
 // Derivación de claves con Argon2id (usando hash-wasm)
-export async function deriveKeyArgon2id(secret: string, salt: Uint8Array, type: 'content-key' | 'access-proof'): Promise<Uint8Array> {
+export async function deriveKeyArgon2id(secret: string, salt: Uint8Array, type: 'content-key' | 'access-proof' | 'account-vault'): Promise<Uint8Array> {
   const domain = `bspaste/${type}/v1:${secret}`;
   const password = new TextEncoder().encode(domain);
   
@@ -160,6 +160,52 @@ export async function deriveKeyArgon2id(secret: string, salt: Uint8Array, type: 
     console.error("Argon2id error", error);
     throw new Error("Failed to derive key");
   }
+}
+
+export async function wrapKeyWithKey(
+  keyToWrap: Uint8Array,
+  wrappingKey: Uint8Array,
+): Promise<string> {
+  const nonce = generateNonce(12);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    toArrayBuffer(wrappingKey),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt'],
+  );
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toArrayBuffer(nonce) },
+    key,
+    toArrayBuffer(keyToWrap),
+  );
+  const payload = new Uint8Array(nonce.byteLength + encrypted.byteLength);
+  payload.set(nonce);
+  payload.set(new Uint8Array(encrypted), nonce.byteLength);
+  return bufferToBase64(payload);
+}
+
+export async function unwrapKeyWithKey(
+  wrappedKey: string,
+  wrappingKey: Uint8Array,
+): Promise<Uint8Array> {
+  const payload = base64ToBuffer(wrappedKey);
+  if (payload.byteLength < 29) throw new Error('La clave cifrada no es válida.');
+  const nonce = payload.slice(0, 12);
+  const ciphertext = payload.slice(12);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    toArrayBuffer(wrappingKey),
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt'],
+  );
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: toArrayBuffer(nonce) },
+    key,
+    toArrayBuffer(ciphertext),
+  );
+  return new Uint8Array(plaintext);
 }
 
 // Envolver DEK (wrapKey)

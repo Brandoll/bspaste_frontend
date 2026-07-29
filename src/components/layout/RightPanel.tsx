@@ -10,34 +10,41 @@ import {
   useDeletePaste,
   useHealth,
 } from '@/hooks/usePasteApi';
+import { useSlugAvailability } from '@/hooks/useAccountApi';
 import {
   bufferToBase64,
   bufferToBase64Url,
+  base64ToBuffer,
   encryptBinary,
   encryptContent,
   generateSalt,
   wrapDEK,
+  wrapKeyWithKey,
 } from '@/lib/crypto';
 import { saveOwnerToken } from '@/lib/owner-credentials';
 import { saveLocalPasteKey } from '@/lib/local-key-cache';
 import { cn } from '@/lib/utils';
 import { usePasteStore } from '@/stores/usePasteStore';
+import { useAuthStore } from '@/stores/useAuthStore';
 import {
   AlertTriangle,
+  CheckCircle2,
   Clock3,
   EyeOff,
   FileLock2,
   Image as ImageIcon,
   KeyRound,
+  Link2,
   Loader2,
   LockOpen,
   Radio,
   Settings2,
   ShieldCheck,
   Sparkles,
+  XCircle,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -66,6 +73,8 @@ const protectionOptions = [
   },
 ] as const;
 
+const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{2,58}[a-z0-9])$/;
+
 function assetFailureMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : '';
   if (raw.toLowerCase().includes('r2') && raw.toLowerCase().includes('configured')) {
@@ -90,7 +99,9 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
   } = usePasteStore();
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
-  const [expiresIn, setExpiresIn] = useState('86400');
+  const [expiresIn, setExpiresIn] = useState('never');
+  const [customSlug, setCustomSlug] = useState('');
+  const [debouncedSlug, setDebouncedSlug] = useState('');
   const [burnAfterRead, setBurnAfterRead] = useState(false);
   const [liveEnabled, setLiveEnabled] = useState(defaultLive);
   const [activeTab, setActiveTab] = useState<'general' | 'advanced'>('general');
@@ -102,7 +113,26 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
   const deletePaste = useDeletePaste();
   const health = useHealth();
   const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const vaultKey = useAuthStore((state) => state.vaultKey);
+  const normalizedSlug = customSlug.trim();
+  const validSlug = normalizedSlug.length === 0 || SLUG_PATTERN.test(normalizedSlug);
+  const slugAvailability = useSlugAvailability(
+    debouncedSlug,
+    Boolean(user) && debouncedSlug.length > 0 && SLUG_PATTERN.test(debouncedSlug),
+  );
+  const customSlugReady = !normalizedSlug || Boolean(
+    user &&
+    validSlug &&
+    debouncedSlug === normalizedSlug &&
+    slugAvailability.data?.available,
+  );
   const r2Unavailable = health.data?.services?.r2Configured === false;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSlug(normalizedSlug), 450);
+    return () => window.clearTimeout(timeout);
+  }, [normalizedSlug]);
 
   const isPending =
     createPaste.isPending ||
@@ -125,6 +155,32 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
       toast.error('Live Share no es compatible con Burn After Read');
       return;
     }
+    if (expiresIn === 'never' && !user) {
+      toast.error('Inicia sesión para crear pastes sin expiración.');
+      return;
+    }
+    if (user && !vaultKey) {
+      toast.error('Vuelve a iniciar sesión para desbloquear tu bóveda cifrada.');
+      return;
+    }
+    if (normalizedSlug) {
+      if (!user) {
+        toast.error('Inicia sesión para usar un enlace personalizado.');
+        return;
+      }
+      if (!validSlug) {
+        toast.error('El enlace debe tener entre 4 y 60 caracteres y no terminar en guion.');
+        return;
+      }
+      if (debouncedSlug !== normalizedSlug || slugAvailability.isFetching) {
+        toast.error('Espera mientras verificamos la disponibilidad del enlace.');
+        return;
+      }
+      if (!slugAvailability.data?.available) {
+        toast.error('Ese enlace personalizado no está disponible.');
+        return;
+      }
+    }
 
     try {
       setCreationStage('Cifrando contenido…');
@@ -133,6 +189,9 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
       const saltBuffer = generateSalt();
       let wrappedKey: string | undefined;
       let accessProof: string | undefined;
+      const vaultWrappedKey = vaultKey
+        ? await wrapKeyWithKey(currentDek, base64ToBuffer(vaultKey))
+        : undefined;
 
       if (protection !== PasteProtection.NONE) {
         setCreationStage('Derivando clave con Argon2id…');
@@ -147,11 +206,13 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
         nonce,
         salt: bufferToBase64(saltBuffer),
         wrappedKey,
+        vaultWrappedKey,
         accessProof,
         protection,
         contentType: 'text/html',
-        expiresInSeconds: Number(expiresIn),
+        expiresInSeconds: expiresIn === 'never' ? null : Number(expiresIn),
         burnAfterRead,
+        customSlug: normalizedSlug || undefined,
       });
 
       saveOwnerToken(paste.publicId, paste.deleteToken);
@@ -215,7 +276,7 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
       if (liveViewerToken) fragment.set('live', liveViewerToken);
       const keyFragment = fragment.size > 0 ? `#${fragment.toString()}` : '';
       toast.success('Paste creado correctamente');
-      router.push(`/p/${paste.publicId}${keyFragment}`);
+      router.push(`/p/${paste.customSlug || paste.publicId}${keyFragment}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo crear el paste');
     } finally {
@@ -292,12 +353,51 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
                 onChange={(event) => setExpiresIn(event.target.value)}
                 className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
               >
+                <option value="never">Sin expiración{!user ? ' · requiere cuenta' : ''}</option>
                 <option value="600">10 minutos</option>
                 <option value="3600">1 hora</option>
                 <option value="86400">1 día</option>
                 <option value="604800">1 semana</option>
                 <option value="2592000">30 días</option>
               </select>
+            </section>
+
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Link2 size={15} className="text-primary" />
+                <Label htmlFor="custom-slug" className="text-sm font-semibold">Enlace personalizado <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+              </div>
+              <div className="flex h-10 items-center overflow-hidden rounded-lg border bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+                <span className="border-r bg-muted/40 px-3 text-xs text-muted-foreground">/p/</span>
+                <input
+                  id="custom-slug"
+                  value={customSlug}
+                  disabled={!user}
+                  maxLength={60}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={user ? 'mi-enlace-personalizado' : 'Inicia sesión para personalizar'}
+                  onChange={(event) => setCustomSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </div>
+              <div className="min-h-5 text-xs">
+                {!user ? (
+                  <p className="text-muted-foreground">Disponible para cuentas registradas.</p>
+                ) : !normalizedSlug ? (
+                  <p className="text-muted-foreground">Entre 4 y 60 caracteres: letras, números y guiones.</p>
+                ) : !validSlug ? (
+                  <p className="flex items-center gap-1.5 text-amber-600"><XCircle size={13} /> Usa al menos 4 caracteres y evita guiones al inicio o final.</p>
+                ) : debouncedSlug !== normalizedSlug || slugAvailability.isFetching ? (
+                  <p className="flex items-center gap-1.5 text-muted-foreground"><Loader2 className="animate-spin" size={13} /> Verificando disponibilidad…</p>
+                ) : slugAvailability.isError ? (
+                  <p className="flex items-center gap-1.5 text-destructive"><XCircle size={13} /> No se pudo verificar. Revisa la conexión e inténtalo otra vez.</p>
+                ) : slugAvailability.data?.available ? (
+                  <p className="flex items-center gap-1.5 text-emerald-600"><CheckCircle2 size={13} /> paste.bsdev.me/p/{normalizedSlug} está disponible.</p>
+                ) : (
+                  <p className="flex items-center gap-1.5 text-destructive"><XCircle size={13} /> {slugAvailability.data?.reason === 'reserved' ? 'Este enlace está reservado.' : 'Este enlace ya está en uso.'}</p>
+                )}
+              </div>
             </section>
 
             <section className="space-y-3 border-t pt-5">
@@ -423,7 +523,10 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
                   checked={burnAfterRead}
                   onCheckedChange={(checked) => {
                     setBurnAfterRead(checked);
-                    if (checked) setLiveEnabled(false);
+                    if (checked) {
+                      setLiveEnabled(false);
+                      if (expiresIn === 'never') setExpiresIn('86400');
+                    }
                   }}
                 />
               </div>
@@ -467,7 +570,7 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
           <Button
             type="button"
             onClick={() => void handleCreate()}
-            disabled={isPending || (pendingAssets.length > 0 && r2Unavailable)}
+            disabled={isPending || !customSlugReady || (pendingAssets.length > 0 && r2Unavailable)}
             className="h-11 w-full"
           >
             {isPending && <Loader2 className="animate-spin" />}

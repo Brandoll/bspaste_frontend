@@ -166,11 +166,15 @@ export function useCompleteAssetUpload() {
 
 export function useGetAssetUrl() {
   return useMutation<DownloadUrlResponse, ApiError, { assetId: string; accessToken?: string }>({
-    mutationFn: ({ assetId, accessToken }) =>
+    mutationFn: ({ assetId, accessToken }) => {
+      const token = accessToken ?? useAuthStore.getState().accessToken ?? undefined;
+      return (
       requestJson<DownloadUrlResponse>(`/assets/${encodeURIComponent(assetId)}`, {
-        headers: bearer(accessToken),
+        headers: bearer(token),
         cache: 'no-store',
-      }),
+      })
+      );
+    },
   });
 }
 

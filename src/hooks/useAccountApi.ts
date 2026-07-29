@@ -1,4 +1,4 @@
-import { AccountUser, AuthResponse, LibraryAsset, PasteSummary } from '@/contracts';
+import { AccountUser, AuthResponse, LibraryAsset, PasteSummary, SlugAvailabilityResponse } from '@/contracts';
 import { requestJson } from '@/hooks/usePasteApi';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,8 +9,18 @@ function authHeaders(): HeadersInit {
 }
 
 export function useRegister() {
-  return useMutation<AuthResponse, Error, { username: string; password: string; email?: string; displayName?: string }>({
+  return useMutation<AuthResponse, Error, { username: string; password: string; email?: string; displayName?: string; vaultSalt: string; wrappedVaultKey: string }>({
     mutationFn: (body) => requestJson('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  });
+}
+
+export function useInitializeVault() {
+  return useMutation<AccountUser, Error, { vaultSalt: string; wrappedVaultKey: string }>({
+    mutationFn: (body) => requestJson('/auth/vault', {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   });
 }
 
@@ -49,7 +59,12 @@ export function useToggleFavorite() {
     mutationFn: async ({ publicId, favorite }) => {
       await requestJson(`/library/favorites/${encodeURIComponent(publicId)}`, { method: favorite ? 'DELETE' : 'POST', headers: authHeaders() });
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: ['library'] }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['library'] }),
+        client.invalidateQueries({ queryKey: ['paste'] }),
+      ]);
+    },
   });
 }
 
@@ -57,6 +72,49 @@ export function useUpdateSlug() {
   const client = useQueryClient();
   return useMutation<{ publicId: string; customSlug: string }, Error, { publicId: string; slug: string }>({
     mutationFn: ({ publicId, slug }) => requestJson(`/pastes/${encodeURIComponent(publicId)}/slug`, { method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ slug }) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['library'] }),
+  });
+}
+
+export function useSlugAvailability(slug: string, enabled: boolean) {
+  const token = useAuthStore((state) => state.accessToken);
+  return useQuery<SlugAvailabilityResponse, Error>({
+    queryKey: ['slug-availability', slug, token],
+    queryFn: () => requestJson(`/pastes/slug-availability/${encodeURIComponent(slug)}`, {
+      headers: authHeaders(),
+      cache: 'no-store',
+    }),
+    enabled: Boolean(token) && enabled,
+    staleTime: 5_000,
+    retry: false,
+  });
+}
+
+export function useUpdateExpiration() {
+  const client = useQueryClient();
+  return useMutation<void, Error, { publicId: string; expiresInSeconds: number | null }>({
+    mutationFn: ({ publicId, expiresInSeconds }) => requestJson(`/pastes/${encodeURIComponent(publicId)}/expiration`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresInSeconds }),
+    }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['library'] }),
+        client.invalidateQueries({ queryKey: ['paste'] }),
+      ]);
+    },
+  });
+}
+
+export function useSetPasteVaultKey() {
+  const client = useQueryClient();
+  return useMutation<{ synchronized: boolean }, Error, { publicId: string; vaultWrappedKey: string }>({
+    mutationFn: ({ publicId, vaultWrappedKey }) => requestJson(`/pastes/${encodeURIComponent(publicId)}/vault-key`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vaultWrappedKey }),
+    }),
     onSuccess: () => client.invalidateQueries({ queryKey: ['library'] }),
   });
 }

@@ -8,10 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasteProtection } from '@/contracts';
 import { useGetPaste, useUnlockPaste } from '@/hooks/usePasteApi';
-import { decryptContent, generateAccessProof, unwrapDEK } from '@/lib/crypto';
+import { base64ToBuffer, decryptContent, generateAccessProof, unwrapDEK, unwrapKeyWithKey, wrapKeyWithKey } from '@/lib/crypto';
 import { loadOwnerToken } from '@/lib/owner-credentials';
 import { loadLocalPasteKey, saveLocalPasteKey } from '@/lib/local-key-cache';
 import { usePasteStore } from '@/stores/usePasteStore';
+import { useAuthStore } from '@/stores/useAuthStore';
+import { useLogin, useSetPasteVaultKey } from '@/hooks/useAccountApi';
+import { unlockAccountVault } from '@/lib/account-vault';
 import { AlertTriangle, Loader2, Lock } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -36,6 +39,7 @@ export default function PastePage() {
   } = usePasteStore();
   const [accessToken, setAccessToken] = useState<string>();
   const [unlockSecret, setUnlockSecret] = useState('');
+  const [vaultPassword, setVaultPassword] = useState('');
   const keyLocationChecked = useSyncExternalStore(
     subscribeToHydration,
     getClientSnapshot,
@@ -44,7 +48,15 @@ export default function PastePage() {
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptionError, setDecryptionError] = useState<string>();
   const decryptedFingerprint = useRef<string | undefined>(undefined);
+  const migratedVaultKey = useRef<string | undefined>(undefined);
   const unlock = useUnlockPaste();
+  const login = useLogin();
+  const setPasteVaultKey = useSetPasteVaultKey();
+  const user = useAuthStore((state) => state.user);
+  const accountToken = useAuthStore((state) => state.accessToken);
+  const vaultKey = useAuthStore((state) => state.vaultKey);
+  const setSession = useAuthStore((state) => state.setSession);
+  const setVaultKey = useAuthStore((state) => state.setVaultKey);
   const pasteQuery = useGetPaste(id, accessToken, keyLocationChecked);
 
   useEffect(() => {
@@ -102,6 +114,13 @@ export default function PastePage() {
       try {
         let activeDek = dek;
         let derivedDek: Uint8Array | undefined;
+        if (!activeDek && paste.vaultWrappedKey && vaultKey) {
+          derivedDek = await unwrapKeyWithKey(paste.vaultWrappedKey, base64ToBuffer(vaultKey));
+          activeDek = derivedDek;
+        }
+        if (!activeDek && paste.owned && paste.vaultWrappedKey && !vaultKey) {
+          throw new Error('Tu bóveda está bloqueada. Introduce la contraseña de tu cuenta.');
+        }
         if (paste.protection !== PasteProtection.NONE && paste.wrappedKey && paste.salt) {
           if (!unlockSecret && !activeDek) {
             throw new Error('Vuelve a introducir el PIN o la contraseña para derivar la clave.');
@@ -134,7 +153,23 @@ export default function PastePage() {
     return () => {
       cancelled = true;
     };
-  }, [dek, pasteQuery.data, setContent, setDEK, unlockSecret]);
+  }, [dek, pasteQuery.data, setContent, setDEK, unlockSecret, vaultKey]);
+
+  useEffect(() => {
+    const paste = pasteQuery.data;
+    if (!paste?.owned || paste.vaultWrappedKey || !dek || !vaultKey) return;
+    if (migratedVaultKey.current === paste.publicId) return;
+    migratedVaultKey.current = paste.publicId;
+    void wrapKeyWithKey(dek, base64ToBuffer(vaultKey))
+      .then((vaultWrappedKey) => setPasteVaultKey.mutateAsync({
+        publicId: paste.publicId,
+        vaultWrappedKey,
+      }))
+      .then(() => toast.success('Clave sincronizada con tus dispositivos'))
+      .catch(() => {
+        migratedVaultKey.current = undefined;
+      });
+  }, [dek, pasteQuery.data, setPasteVaultKey, vaultKey]);
 
   const handleUnlock = async () => {
     const paste = pasteQuery.data;
@@ -151,6 +186,22 @@ export default function PastePage() {
     }
   };
 
+  const handleVaultUnlock = async () => {
+    if (!user || !vaultPassword) return;
+    try {
+      const session = await login.mutateAsync({ username: user.username, password: vaultPassword });
+      if (!session.user.vault) throw new Error('Esta cuenta todavía no tiene una bóveda inicializada.');
+      const unlocked = await unlockAccountVault(vaultPassword, session.user.vault);
+      setSession(session.user, session.accessToken);
+      setVaultKey(unlocked);
+      setVaultPassword('');
+      setDecryptionError(undefined);
+      toast.success('Bóveda desbloqueada');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo desbloquear la bóveda');
+    }
+  };
+
   const isLocked = pasteQuery.data?.requiresUnlock && !accessToken;
   const canRenderEditor =
     Boolean(pasteQuery.data?.ciphertext) &&
@@ -164,9 +215,9 @@ export default function PastePage() {
         <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b bg-background px-5 py-4 sm:px-7">
           <div className="min-w-0">
             <h1 className="truncate font-semibold">Paste {id}</h1>
-            {pasteQuery.data?.expiresAt && <p className="text-xs text-muted-foreground">Expira: <time dateTime={pasteQuery.data.expiresAt}>{pasteQuery.data.expiresAt.replace('T', ' ').slice(0, 16)} UTC</time></p>}
+            <p className="text-xs text-muted-foreground">{pasteQuery.data?.expiresAt ? <>Expira: <time dateTime={pasteQuery.data.expiresAt}>{pasteQuery.data.expiresAt.replace('T', ' ').slice(0, 16)} UTC</time></> : 'Sin expiración'}</p>
           </div>
-          <PasteActions publicId={id} ownerToken={ownerToken ?? undefined} owned={pasteQuery.data?.owned} />
+          <PasteActions publicId={id} ownerToken={ownerToken ?? undefined} owned={pasteQuery.data?.owned} expiresAt={pasteQuery.data?.expiresAt} />
         </header>
 
         <main className="flex min-h-[calc(100vh-9rem)] flex-1 lg:min-h-0">
@@ -228,6 +279,18 @@ export default function PastePage() {
                 <p className="text-sm text-muted-foreground">
                   {decryptionError ?? pasteQuery.error?.message}
                 </p>
+                {decryptionError?.includes('bóveda') && user && (
+                  <form className="mx-auto mt-5 flex max-w-sm gap-2" onSubmit={(event) => { event.preventDefault(); void handleVaultUnlock(); }}>
+                    <Input type="password" autoComplete="current-password" placeholder="Contraseña de tu cuenta" value={vaultPassword} onChange={(event) => setVaultPassword(event.target.value)} />
+                    <Button type="submit" disabled={login.isPending || !vaultPassword}>{login.isPending ? <Loader2 className="animate-spin" /> : 'Abrir'}</Button>
+                  </form>
+                )}
+                {decryptionError && pasteQuery.data?.protection !== PasteProtection.NONE && !pasteQuery.data?.vaultWrappedKey && (
+                  <form className="mx-auto mt-5 flex max-w-sm gap-2" onSubmit={(event) => { event.preventDefault(); void handleUnlock(); }}>
+                    <Input type="password" inputMode={pasteQuery.data?.protection === PasteProtection.PIN ? 'numeric' : 'text'} placeholder={pasteQuery.data?.protection === PasteProtection.PIN ? 'PIN del paste' : 'Contraseña del paste'} value={unlockSecret} onChange={(event) => setUnlockSecret(event.target.value)} />
+                    <Button type="submit" disabled={unlock.isPending || !unlockSecret}>{unlock.isPending ? <Loader2 className="animate-spin" /> : 'Abrir'}</Button>
+                  </form>
+                )}
               </div>
             </div>
           )}
@@ -240,7 +303,7 @@ export default function PastePage() {
                   assets={pasteQuery.data.assets}
                   dek={dek}
                   accessToken={pasteQuery.data.readToken}
-                  ownerToken={ownerToken ?? undefined}
+                  ownerToken={ownerToken ?? (pasteQuery.data.owned ? accountToken ?? undefined : undefined)}
                 />
               )}
             </div>

@@ -7,7 +7,7 @@ El navegador cifra texto, código, imágenes y archivos antes de enviarlos. El b
 ## Funcionalidades
 
 - Editor enriquecido con TipTap para texto, Markdown y código.
-- Creación de pastes con expiración, PIN, contraseña y Burn After Read.
+- Creación de pastes sin expiración por defecto para cuentas, o con duración configurable.
 - Adjuntar imágenes mediante Ctrl+V, arrastrar y soltar o selector de archivos.
 - Cifrado AES-256-GCM en el dispositivo antes de cada envío.
 - Carga directa de assets cifrados a Cloudflare R2 mediante URLs firmadas.
@@ -15,7 +15,10 @@ El navegador cifra texto, código, imágenes y archivos antes de enviarlos. El b
 - Live Share cifrado por WebSockets con debounce.
 - Registro e inicio de sesión por username.
 - Biblioteca privada de pastes, favoritos y galería de archivos.
+- Bóveda cifrada para abrir pastes propios desde otro dispositivo.
+- Miniaturas locales, visor, descarga y apertura en otra pestaña.
 - URLs personalizadas para pastes propios.
+- Verificación de disponibilidad y reserva atómica del enlace durante la creación.
 - Diseño responsive, oscuro por defecto y preparado como PWA.
 
 ## Stack
@@ -112,9 +115,11 @@ FRONTEND_ORIGIN=http://localhost:3000
 3. Sin PIN ni contraseña, la DEK viaja en el fragmento `#key` del enlace. Ese fragmento no llega al servidor HTTP.
 4. Con PIN o contraseña, Argon2id deriva una KEK que envuelve la DEK localmente.
 5. Se crea un access proof separado para desbloquear el paste sin enviar el secreto original.
-6. Para imágenes y archivos, únicamente el ciphertext se sube directamente a R2.
+6. La contraseña de la cuenta deriva una clave que protege una clave maestra aleatoria.
+7. Cada DEK se envuelve con esa clave maestra para sincronizarla sin revelarla al backend.
+8. Para imágenes y archivos, únicamente el ciphertext se sube directamente a R2.
 
-Las claves de enlaces abiertos se conservan durante la sesión actual para mejorar la navegación por la biblioteca. La sincronización segura de claves entre dispositivos requerirá una bóveda cifrada y es una fase posterior del producto.
+La clave maestra descifrada se conserva únicamente en `sessionStorage`. En un dispositivo nuevo se reconstruye al iniciar sesión con la contraseña; el servidor almacena solamente sus versiones cifradas. Los pastes anteriores se migran progresivamente cuando el navegador todavía conoce su DEK o el usuario introduce su PIN o contraseña.
 
 ## Cloudflare R2 y CORS
 
@@ -182,7 +187,6 @@ npm run build
 ## Roadmap
 
 - Verificación y recuperación de correo.
-- Bóveda cifrada para claves entre dispositivos.
 - Gestión de sesiones desde perfil.
 - Historial y versionado de pastes.
 - API pública, CLI y extensión de navegador.

@@ -11,11 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useRegister } from '@/hooks/useAccountApi';
 import { useAuthStore } from '@/stores/useAuthStore';
+import { createAccountVault } from '@/lib/account-vault';
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ username: '', displayName: '', email: '', password: '' });
   const register = useRegister();
   const setSession = useAuthStore((state) => state.setSession);
+  const setVaultKey = useAuthStore((state) => state.setVaultKey);
   const router = useRouter();
   const field = (name: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => setForm((current) => ({ ...current, [name]: event.target.value }));
 
@@ -23,7 +25,23 @@ export default function RegisterPage() {
     <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground"><UserPlus size={19} /></span>
     <h1 className="mt-6 text-3xl font-semibold tracking-tight">Crea tu espacio</h1>
     <p className="mt-2 text-sm leading-6 text-muted-foreground">El correo es opcional por ahora. Iniciarás sesión rápidamente con tu username.</p>
-    <form className="mt-8 grid gap-5 rounded-[1.4rem] border bg-card p-6 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void register.mutateAsync({ ...form, email: form.email || undefined, displayName: form.displayName || undefined }).then((session) => { setSession(session.user, session.accessToken); router.push('/dashboard'); toast.success('Cuenta creada'); }).catch((error) => toast.error(error.message)); }}>
+    <form className="mt-8 grid gap-5 rounded-[1.4rem] border bg-card p-6 sm:grid-cols-2" onSubmit={(event) => {
+      event.preventDefault();
+      void (async () => {
+        const { vaultKey, bundle } = await createAccountVault(form.password);
+        const session = await register.mutateAsync({
+          ...form,
+          email: form.email || undefined,
+          displayName: form.displayName || undefined,
+          vaultSalt: bundle.salt,
+          wrappedVaultKey: bundle.wrappedKey,
+        });
+        setSession(session.user, session.accessToken);
+        setVaultKey(vaultKey);
+        router.push('/dashboard');
+        toast.success('Cuenta y bóveda cifrada creadas');
+      })().catch((error) => toast.error(error instanceof Error ? error.message : 'No se pudo crear la cuenta'));
+    }}>
       <div><Label htmlFor="reg-username">Nombre de usuario</Label><Input id="reg-username" className="mt-2" value={form.username} onChange={field('username')} pattern="[A-Za-z0-9_]{3,30}" required /></div>
       <div><Label htmlFor="reg-name">Nombre visible</Label><Input id="reg-name" className="mt-2" value={form.displayName} onChange={field('displayName')} /></div>
       <div className="sm:col-span-2"><Label htmlFor="reg-email">Correo <span className="text-muted-foreground">(opcional)</span></Label><Input id="reg-email" className="mt-2" type="email" value={form.email} onChange={field('email')} /></div>
