@@ -55,8 +55,9 @@ export function MobileHeader() {
         {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger
+              type="button"
               aria-label="Abrir menú de cuenta"
-              render={<button type="button" className="ml-1 flex h-10 items-center gap-1 rounded-full border bg-background py-1 pl-1 pr-2 text-muted-foreground outline-none ring-offset-2 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring" />}
+              className="ml-1 flex h-10 items-center gap-1 rounded-full border bg-background py-1 pl-1 pr-2 text-muted-foreground outline-none ring-offset-2 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                 {user.username.slice(0, 1).toUpperCase()}
@@ -69,10 +70,10 @@ export function MobileHeader() {
                 <span className="block truncate font-normal">@{user.username}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="px-2 py-2" render={<Link href="/dashboard" />}><Files /> Mis pastes</DropdownMenuItem>
-              <DropdownMenuItem className="px-2 py-2" render={<Link href="/favorites" />}><Heart /> Favoritos</DropdownMenuItem>
-              <DropdownMenuItem className="px-2 py-2" render={<Link href="/assets" />}><ImageIcon /> Imágenes y archivos</DropdownMenuItem>
-              <DropdownMenuItem className="px-2 py-2" render={<Link href="/settings" />}><Settings /> Configuración</DropdownMenuItem>
+              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/dashboard')}><Files /> Mis pastes</DropdownMenuItem>
+              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/favorites')}><Heart /> Favoritos</DropdownMenuItem>
+              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/assets')}><ImageIcon /> Imágenes y archivos</DropdownMenuItem>
+              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/settings')}><Settings /> Configuración</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
