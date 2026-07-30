@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -65,15 +66,16 @@ export function MobileHeader() {
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={8} className="w-64 p-2">
-              <DropdownMenuLabel className="px-2 py-2">
-                <span className="block truncate text-sm font-semibold text-foreground">{user.displayName || user.username}</span>
-                <span className="block truncate font-normal">@{user.username}</span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/dashboard')}><Files /> Mis pastes</DropdownMenuItem>
-              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/favorites')}><Heart /> Favoritos</DropdownMenuItem>
-              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/assets')}><ImageIcon /> Imágenes y archivos</DropdownMenuItem>
-              <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/settings')}><Settings /> Configuración</DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="px-2 py-2">
+                  <span className="block truncate text-sm font-semibold text-foreground">{user.displayName || user.username}</span>
+                  <span className="block truncate font-normal">@{user.username}</span>
+                </DropdownMenuLabel>
+                <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/dashboard')}><Files /> Mis pastes</DropdownMenuItem>
+                <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/favorites')}><Heart /> Favoritos</DropdownMenuItem>
+                <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/assets')}><ImageIcon /> Imágenes y archivos</DropdownMenuItem>
+                <DropdownMenuItem className="px-2 py-2" onClick={() => router.push('/settings')}><Settings /> Configuración</DropdownMenuItem>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
