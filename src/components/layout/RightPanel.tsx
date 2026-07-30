@@ -216,6 +216,7 @@ export function RightPanel({ defaultLive = false }: { defaultLive?: boolean }) {
       });
 
       saveOwnerToken(paste.publicId, paste.deleteToken);
+      if (paste.customSlug) saveOwnerToken(paste.customSlug, paste.deleteToken);
       if (protection === PasteProtection.NONE) {
         saveLocalPasteKey(paste.publicId, bufferToBase64Url(currentDek));
       }

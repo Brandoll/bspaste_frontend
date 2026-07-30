@@ -84,15 +84,27 @@ export function useCreatePaste() {
   });
 }
 
-export function useGetPaste(publicId: string, accessToken?: string, enabled = true) {
+export function useGetPaste(
+  publicId: string,
+  accessToken?: string,
+  enabled = true,
+  ownerToken?: string,
+) {
   const accountToken = useAuthStore((state) => state.accessToken);
   return useQuery<GetPasteResponse, ApiError>({
-    queryKey: ['paste', publicId, accessToken ?? 'locked', accountToken ?? 'guest'],
+    queryKey: [
+      'paste',
+      publicId,
+      accessToken ?? 'locked',
+      accountToken ?? 'guest',
+      ownerToken ? 'owner' : 'recipient',
+    ],
     queryFn: () =>
       requestJson<GetPasteResponse>(`/pastes/${encodeURIComponent(publicId)}`, {
         headers: {
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           ...(accountToken ? { 'X-Account-Authorization': `Bearer ${accountToken}` } : {}),
+          ...(ownerToken ? { 'X-Owner-Authorization': `Bearer ${ownerToken}` } : {}),
         },
         cache: 'no-store',
       }),

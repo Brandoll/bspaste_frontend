@@ -45,6 +45,11 @@ export default function PastePage() {
     getClientSnapshot,
     getServerSnapshot,
   );
+  const storedOwnerToken = useSyncExternalStore(
+    subscribeToHydration,
+    () => loadOwnerToken(id) ?? undefined,
+    () => undefined,
+  );
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptionError, setDecryptionError] = useState<string>();
   const decryptedFingerprint = useRef<string | undefined>(undefined);
@@ -57,7 +62,12 @@ export default function PastePage() {
   const vaultKey = useAuthStore((state) => state.vaultKey);
   const setSession = useAuthStore((state) => state.setSession);
   const setVaultKey = useAuthStore((state) => state.setVaultKey);
-  const pasteQuery = useGetPaste(id, accessToken, keyLocationChecked);
+  const pasteQuery = useGetPaste(
+    id,
+    accessToken,
+    keyLocationChecked,
+    storedOwnerToken,
+  );
 
   useEffect(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -66,9 +76,9 @@ export default function PastePage() {
       const valid = setDEKFromUrl(sharedKey);
       if (!valid) toast.error('La clave incluida en el enlace no es válida.');
     }
-    setOwnerToken(loadOwnerToken(id));
+    setOwnerToken(storedOwnerToken ?? null);
     setMode('read');
-  }, [id, setDEKFromUrl, setMode, setOwnerToken]);
+  }, [id, setDEKFromUrl, setMode, setOwnerToken, storedOwnerToken]);
 
   useEffect(() => {
     const paste = pasteQuery.data;
