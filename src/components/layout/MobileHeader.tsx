@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  ChevronDown,
   FilePlus2,
   Files,
   Heart,
@@ -55,9 +56,12 @@ export function MobileHeader() {
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="Abrir menú de cuenta"
-              render={<button type="button" className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-ring" />}
+              render={<button type="button" className="ml-1 flex h-10 items-center gap-1 rounded-full border bg-background py-1 pl-1 pr-2 text-muted-foreground outline-none ring-offset-2 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring" />}
             >
-              {user.username.slice(0, 1).toUpperCase()}
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                {user.username.slice(0, 1).toUpperCase()}
+              </span>
+              <ChevronDown size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={8} className="w-64 p-2">
               <DropdownMenuLabel className="px-2 py-2">

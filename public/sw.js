@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bspaste-shell-v1';
+const CACHE_NAME = 'bspaste-shell-v2';
 const SHELL = ['/', '/create'];
 
 self.addEventListener('install', (event) => {
